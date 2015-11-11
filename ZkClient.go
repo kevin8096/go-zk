@@ -1,70 +1,74 @@
 package main
-//import "fmt"
 import "time"
 import "github.com/samuel/go-zookeeper/zk"
 import (
-	//"encoding/json"
+	"./config"
 	"net/http"
 	"io"
-	"fmt"
 )
-
-
-type zkAddrAndPort struct {
-	Addr interface{}
-	Tport interface{}
+var i int = -1
+var cw int = 0
+var gcd int = 2
+//轮询节点
+func getNode(NodeString []string) string {
+	for {
+		i = (i + 1) % len(NodeString)
+		if i == 0 {
+			cw = cw - gcd
+			if cw <= 0 {
+				cw = 1
+				if cw == 0 {
+					return ""
+				}
+			}
+		}
+		if weight:= 1; weight >= cw {
+			return string(NodeString[i])
+		}
+	}
 }
 
-
-func zkHandler(w http.ResponseWriter,r *http.Request)  {
-	zkAddr := []string{"192.168.100.24"}
-	//dateTimetime :=time.Now()
-	var d zk.Dialer
-	c,_, err := zk.ConnectWithDialer(zkAddr,time.Second,d)
-	fmt.Println(d)
-	if err != nil {
-		panic(err)
-	}
-	children,_,_,err :=  c.ChildrenW("/services/cart")
-	if err != nil {
-		panic(err)
-	}
-	jsonData ,_,_,err := c.GetW("/services/cart/"+children[0])
-	jsonStr :="";
-	for  key:=  range jsonData{
-		jsonStr += string(jsonData[key]);
-	}
-/*	var res map[string] interface{}
-	json.Unmarshal(jsonData,&res)
-	var address interface{}
-	var tport interface{}
-	for key,value:= range res {
-		if key == "address" {
-			address = value
+func zkHandler(addresses []string,path string)  ([]string, *zk.Conn,error) {
+	zkAddr := addresses
+	c,_, err := zk.Connect(zkAddr,time.Second*10)
+	defer func() {
+		if err := recover(); err != nil {
+			return
 		}
-		if key == "port" {
-			tport = value
+	}()
+	children,_,_,err :=  c.ChildrenW("/services/"+path)
+	defer func() {
+		if err := recover(); err != nil {
+			return
 		}
-	}
-	zkInfo := &zkAddrAndPort{address,tport}
-	//fmt.Println(json.Marshal(zkInfo))
-	result, err := json.Marshal(zkInfo)
-	if err != nil{
+	}()
+	return children,c,err;
 
-	}*/
-	 io.WriteString(w,string(jsonStr))
+}
+
+func getNodeInfo(w http.ResponseWriter,r *http.Request)  {
+	path := r.URL.Query().Get("service")
+	nodeArr,c ,err:= zkHandler(config.ZkAddresses,path);
+	defer func() {
+		if err := recover(); err != nil {
+			io.WriteString(w,"{\"code\":400,\"data\":\"zk error\"}")
+			return
+		}
+	}()
+	node := getNode(nodeArr)
+	jsonData ,_,_,err := c.GetW("/services/"+path+"/"+node)
+	if err !=nil {
+	}
+	defer c.Close()
+
+	io.WriteString(w,"{\"code\":200,\"data\":"+string(jsonData)+"}")
 
 }
 
 func main(){
-
-
-	http.HandleFunc("/func",zkHandler)
+	http.HandleFunc("/zk",getNodeInfo)
 	err := http.ListenAndServe(":9999", nil)
 	if err != nil {
 		panic(err)
 	}
-
-
-
 }
