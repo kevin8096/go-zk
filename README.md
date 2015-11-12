@@ -1,3 +1,3 @@
 # go-zk
 
-a client by golang  
+a zookeeper client by golang  
