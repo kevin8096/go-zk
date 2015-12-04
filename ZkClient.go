@@ -5,10 +5,14 @@ import (
 	"./config"
 	"net/http"
 	"io"
+	"os"
 )
 var i int = -1
 var cw int = 0
 var gcd int = 2
+var ZkConn,_,_ = zk.Connect(config.ZkAddresses,time.Second*10)
+
+
 //轮询节点
 func getNode(NodeString []string) string {
 	for {
@@ -27,28 +31,20 @@ func getNode(NodeString []string) string {
 		}
 	}
 }
+func zkHandler(addresses []string,path string)  ([]string,error) {
 
-func zkHandler(addresses []string,path string)  ([]string, *zk.Conn,error) {
-	zkAddr := addresses
-	c,_, err := zk.Connect(zkAddr,time.Second*10)
+	children,_,err :=  ZkConn.Children("/services/"+path)
 	defer func() {
 		if err := recover(); err != nil {
 			return
 		}
 	}()
-	children,_,_,err :=  c.ChildrenW("/services/"+path)
-	defer func() {
-		if err := recover(); err != nil {
-			return
-		}
-	}()
-	return children,c,err;
+	return children,err;
 
 }
-
 func getNodeInfo(w http.ResponseWriter,r *http.Request)  {
 	path := r.URL.Query().Get("service")
-	nodeArr,c ,err:= zkHandler(config.ZkAddresses,path);
+	nodeArr,err:= zkHandler(config.ZkAddresses,path);
 	defer func() {
 		if err := recover(); err != nil {
 			io.WriteString(w,"{\"code\":400,\"data\":\"zk error\"}")
@@ -56,19 +52,25 @@ func getNodeInfo(w http.ResponseWriter,r *http.Request)  {
 		}
 	}()
 	node := getNode(nodeArr)
-	jsonData ,_,_,err := c.GetW("/services/"+path+"/"+node)
+	jsonData ,_,err := ZkConn.Get("/services/"+path+"/"+node)
 	if err !=nil {
+
 	}
-	defer c.Close()
 
 	io.WriteString(w,"{\"code\":200,\"data\":"+string(jsonData)+"}")
 
 }
 
+
 func main(){
 	http.HandleFunc("/zk",getNodeInfo)
-	err := http.ListenAndServe(":9999", nil)
+	os.Hostname();
+	hostName,err := os.Hostname();
 	if err != nil {
 		panic(err)
+	}
+	errr := http.ListenAndServe(hostName+":"+config.HttpPort, nil)
+	if errr != nil {
+		panic(errr)
 	}
 }
